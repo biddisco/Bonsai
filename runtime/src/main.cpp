@@ -14,6 +14,11 @@ http://github.com/treecode/Bonsai
 
 */
 
+#ifdef USE_MPI
+  #include <omp.h>
+  #include <mpi.h>
+#endif
+
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -34,13 +39,28 @@ double drand48()
 }
 
 
-#endif
+#else  /* not WIN32 */
 
+#include <execinfo.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
-#ifdef USE_MPI
-  #include <omp.h>
-  #include <mpi.h>
-#endif
+#include <sys/time.h>
+static inline double rtc(void)
+{
+  struct timeval Tvalue;
+  double etime;
+  struct timezone dummy;
+
+  gettimeofday(&Tvalue,&dummy);
+  etime =  (double) Tvalue.tv_sec +
+    1.e-6*((double) Tvalue.tv_usec);
+  return etime;
+}
+
+#endif /* ifdef WIN32 */
+
 
 #include <iostream>
 #include <stdlib.h>
@@ -737,6 +757,92 @@ int setupMergerModel(vector<real4> &bodyPositions1,
 long long my_dev::base_mem::currentMemUsage;
 long long my_dev::base_mem::maxMemUsage;
 
+struct DistributedLogging;
+DistributedLogging *logD_ptr = NULL;
+
+struct DistributedLogging
+{
+  private:
+    const int __rank;
+    const std::string __fileName;
+    std::stringstream __log;
+  public:
+    DistributedLogging(const int rank, const std::string fileName) :  
+      __rank(rank), __fileName(fileName) {}
+
+    std::stringstream& getStream() { return __log; }
+    void write()
+    {
+      const double t0 = rtc();
+      std::ofstream logFile(__fileName.c_str());
+      logFile <<  __log.rdbuf();
+      logFile << "Writing log data took: " << rtc() - t0 << std::endl;
+      logFile.close();
+    }
+#ifndef WIN32
+  private:
+    void print_trace() 
+    {
+      char pid_buf[30];
+      sprintf(pid_buf, "%d", getpid());
+      char name_buf[512];
+      name_buf[readlink("/proc/self/exe", name_buf, 511)]=0;
+      int child_pid = fork();
+      if (!child_pid) {           
+        dup2(2,1); // redirect output to stderr
+        fprintf(stderr,"stack trace for %s pid=%s\n",name_buf,pid_buf);
+        execlp("gdb", "gdb", "--batch", "-n", "-ex", "thread", "-ex", "bt", name_buf, pid_buf, NULL);
+        abort(); /* If gdb failed to start */
+      } else {
+        waitpid(child_pid,NULL,0);
+      }
+    }
+#endif
+  private:
+    void writeOnSignal(const int sig)
+    {
+      write();
+#ifndef WIN32
+      switch (sig)
+      {
+        case SIGSEGV: break;
+        case SIGTERM: 
+          if(__rank == 0)
+          {
+            fprintf(stderr, " -- Cought SIGTERM -- \n");
+          }
+          exit(-1);
+          break;
+        default:
+          if(__rank == 0)
+          {
+            fprintf(stderr, " -- Cought unknown signal= %d -- \n", sig);
+          }
+          exit(-1);
+          break;
+      }
+      /* handle SIGSEGV */
+      void *array[10];
+      size_t size;
+
+      // get void*'s for all entries on the stack
+      size = backtrace(array, 10);
+      fprintf(stderr, "My handler: signal %d [SIGSEGV] rank= %d:\n", sig, __rank);
+      backtrace_symbols_fd(array, size, STDERR_FILENO);
+      fprintf(stderr, " -- Backtrace [rank= %d]-- \n", __rank);
+      print_trace();
+      abort();
+#endif
+    }
+  public:
+    static void writeOnSignalStatic(const int sig)
+    {
+      assert(logD_ptr != NULL);
+      logD_ptr->writeOnSignal(sig);
+    }
+};
+
+
 int main(int argc, char** argv)
 {
   my_dev::base_mem::currentMemUsage = 0;
@@ -1124,8 +1230,14 @@ int main(int argc, char** argv)
 
   //ofstream logFile(logFileName.c_str());
   //Use a string stream buffer, only write at end of the run
-  std::stringstream logStream;
-  ostream &logFile = logStream;
+  DistributedLogging logD(procId, logFileName);
+#ifndef WIN32
+  logD_ptr = &logD;
+  signal(SIGSEGV, DistributedLogging::writeOnSignalStatic);   // install our handler
+  signal(SIGTERM, DistributedLogging::writeOnSignalStatic);   // install our handler
+#endif
+
+  ostream &logFile = logD.getStream();
 
   tree->set_context(logFile, false); //Do logging to file and enable timing (false = enabled)
 
@@ -1469,11 +1581,7 @@ int main(int argc, char** argv)
   LOG("Finished!!! Took in total: %lg sec\n", tree->get_time()-t0);
 
 
-  double t1w = tree->get_time();
-  ofstream logFile2(logFileName.c_str());
-  logFile2 <<  logStream.rdbuf();
-  logFile2 << "Writing log data took: " << tree->get_time()-t1w << std::endl;
-  logFile2.close();
+  logD.write();
 
 
 

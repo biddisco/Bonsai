@@ -1023,6 +1023,15 @@ void octree::iterate() {
 
   for(int i=0; i < 10000000; i++) //Large number, limit
   {
+#if 1  /* test SIGSEGV */
+    if (i == 4 && procId == 2)
+    {
+      int *foo = (int*)-1; // make a bad pointer
+      printf("%d\n", *foo);       // causes segfault
+    }
+#endif
+
+      
     if (true == iterate_once(idata))
     {
       break;    
