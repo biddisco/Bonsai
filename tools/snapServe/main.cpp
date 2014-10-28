@@ -22,11 +22,20 @@
 
 #include "anyoption.h"
 #include <mpi.h>
+#include <signal.h>
 
 using ShmQHeader = SharedMemoryServer<BonsaiSharedQuickHeader>;
 using ShmQData   = SharedMemoryServer<BonsaiSharedQuickData>;
 static ShmQHeader *shmQHeader = NULL;
 static ShmQData   *shmQData   = NULL;
+
+
+static bool keepRunning = true;
+
+void intHandler(int dummy=0) {
+  std::cout << "Caught a CTRL-C event " << std::endl;
+  keepRunning = false;
+}
 
 static void lTerminateIO() 
 {
@@ -368,11 +377,17 @@ int main(int argc, char * argv[])
     fprintf(stderr , " delay= %d msec \n", delay);
   }
 
+  // catch ctrl-c so we can close cleany and not hold onto memory
+  struct sigaction act;
+  act.sa_handler = intHandler;
+  sigaction(SIGINT, &act, NULL);
+
   const auto &fileList = lParseList(fileNameList);
 
-  for (int i = 0; i < nloop; i++)
+  for (int i = 0; (i < nloop) && keepRunning; i++)
     for (const auto &file : fileList)
     {
+      if (!keepRunning) break;
       if (rank == 0)
         fprintf(stderr, "loop= %3d: filename= %s \n", i, file.c_str());
       const auto &data = readBonsai(rank, nranks, comm,
@@ -385,6 +400,9 @@ int main(int argc, char * argv[])
     }
 
   lTerminateIO();
+
+  delete shmQHeader;
+  delete shmQData;
 
   MPI_Finalize();
 
