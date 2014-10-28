@@ -18,22 +18,29 @@ BonsaiCatalystData::BonsaiCatalystData(const int rank, const int nrank, const MP
   std::cout << "Creating Bonsai Catalyst Data adaptor" << std::endl;
   this->cxxPipeline = vtkSmartPointer<vtkBonsaiPipeline>::New();
   std::string temp = "/Users/biddisco/build/bcatalyst/bcat.vtk";
-  this->cxxPipeline->Initialize(1, temp);
+//  this->cxxPipeline->Initialize(1, temp);
 
   isTimeDataSet = 0;
 
   if(!coProcessor)
     {
-    std::string cPythonFileName = "/Users/biddisco/build/bcatalyst/python-test-1.py";
-    std::string outFilename = "/Users/biddisco/build/bcatalyst/bdata-1.vtk";
-//    vtkCPPythonScriptPipeline* pipeline = vtkCPPythonScriptPipeline::New();
-//    pipeline->Initialize(cPythonFileName.c_str());
-    cxxPipeline = vtkSmartPointer<vtkBonsaiPipeline>::New();
-    cxxPipeline->Initialize(1,outFilename);
-
     coProcessor = vtkSmartPointer<vtkCPProcessor>::New();
-    coProcessor->Initialize();
-    coProcessor->AddPipeline(cxxPipeline);
+    coProcessor->Initialize();    std::string cPythonFileName = "/Users/biddisco/build/bcatalyst/live2.py";
+    std::string outFilename = "/Users/biddisco/build/bcatalyst/bdata-1.vtk";
+
+    std::cout << "Creating python pipeline " << std::endl;
+    vtkCPPythonScriptPipeline* pyPipeline = vtkCPPythonScriptPipeline::New();
+
+    std::cout << "Initializing python pipeline " << std::endl;
+    pyPipeline->Initialize(cPythonFileName.c_str());
+    std::cout << "Python pipeline initialized " << std::endl;
+
+//    cxxPipeline = vtkSmartPointer<vtkBonsaiPipeline>::New();
+//    cxxPipeline->Initialize(1,outFilename);
+
+
+//    coProcessor->AddPipeline(cxxPipeline);
+    coProcessor->AddPipeline(pyPipeline);
     }
   if(!coProcessorData)
     {

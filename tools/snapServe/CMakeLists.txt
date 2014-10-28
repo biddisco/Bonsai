@@ -60,5 +60,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 #
 # exe
 #
-add_executable(snapServe ${SRC_FILES})
-target_link_libraries(snapServe bonsai_tools_common ${MPI_C_LIBRARIES} -lrt -rdynamic -pie)
+add_executable(bonsai_snapServe ${SRC_FILES})
+if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+  target_link_libraries(bonsai_snapServe bonsai_tools_common ${MPI_C_LIBRARIES} -rdynamic) 
+else()
+  target_link_libraries(bonsai_snapServe bonsai_tools_common ${MPI_C_LIBRARIES} -lrt -rdynamic -pie)
+endif()
+

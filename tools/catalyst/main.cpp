@@ -7,19 +7,22 @@
 #include "IDType.h"
 #include "BonsaiSharedData.h"
 #include "BonsaiIO.h"
-#include "SharedMemory.h"
+#ifdef BONSAI_CATALYST_STDLIB
+# include <boost/lexical_cast.hpp>
+# include <boost/function.hpp>
+# define bonsaistd boost
+# define to_string lexical_cast<std::string>
+#else
+# include <functional>
+# define bonsaistd std
+#endif
+
 #ifndef BONSAI_CATALYST_CLANG
  #include <omp.h>
 #endif
-#ifdef BONSAI_CATALYST_STDLIB
- #include <boost/function.hpp>
- #define bonsaistd boost
-#else
- #include <functional>
- #define bonsaistd std
-#endif
 #include <mpi.h>
 
+#include "SharedMemory.h"
 #include "anyoption.h"
 #include "BonsaiCatalystData.h"
 
@@ -533,7 +536,9 @@ int main(int argc, char * argv[])
       stereo,
       callback);
 
-//  while(1) {}
+  delete rDataPtr;
+
+  while(1) {}
   return 0;
 }
 
