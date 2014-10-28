@@ -8,19 +8,23 @@
 #include "IDType.h"
 #include "BonsaiSharedData.h"
 #include "BonsaiIO.h"
-#include "SharedMemory.h"
+
+#ifdef BONSAI_CATALYST_STDLIB
+# include <boost/lexical_cast.hpp>
+# include <boost/function.hpp>
+# include <boost/tuple/tuple.hpp>
+# define bonsaistd boost
+# define to_string lexical_cast<std::string>
+#else
+# include <functional>
+# define bonsaistd std
+#endif
+
 #ifndef BONSAI_CATALYST_CLANG
  #include <omp.h>
 #endif
-#ifdef BONSAI_CATALYST_STDLIB
- #include <boost/function.hpp>
- #include <boost/tuple/tuple.hpp>
- #define bonsaistd boost
-#else
- #include <functional>
- #define bonsaistd std
-#endif
 
+#include "SharedMemory.h"
 #include "anyoption.h"
 
 using ShmQHeader = SharedMemoryServer<BonsaiSharedQuickHeader>;

@@ -1,12 +1,21 @@
 #undef NDEBUG
-#include <mpi.h>
 #include <dlfcn.h>
 #include <vector>
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <cassert>
-#include <functional>
+#ifdef BONSAI_CATALYST_STDLIB
+# include <boost/lexical_cast.hpp>
+# include <boost/function.hpp>
+# define bonsaistd boost
+# define to_string boost::lexical_cast<std::string>
+#else
+# include <functional>
+# define bonsaistd std
+#endif
+
+#include <mpi.h>
 
 class DynamicLoader
 {
@@ -21,10 +30,10 @@ class DynamicLoader
       throw std::logic_error("can't load library named \"" + filename + "\"");
   }
 
-    template<class T> std::function<T> load(const std::string &functionName) const
+    template<class T> bonsaistd::function<T> load(const std::string &functionName) const
     {
       dlerror();
-      const void* result = dlsym(m_handle, functionName.c_str());
+      void* result = dlsym(m_handle, functionName.c_str());
       if (!result)
       {
         const char* error = dlerror();
@@ -56,7 +65,7 @@ static std::vector<std::vector<std::string>> lParseInput()
     input += tmp + "\n";
 
   int size[2] = {static_cast<int>(input.size()), static_cast<int>(input.capacity())};
-  MPI_Bcast(&size, 2, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast((void*)&size, 2, MPI_INT, 0, MPI_COMM_WORLD);
   input.resize (size[0]);
   input.reserve(size[1]);
   MPI_Bcast(&input[0], size[0], MPI_BYTE, 0, MPI_COMM_WORLD);
