@@ -38,3 +38,6 @@ add_library(bonsai_tools_common
 add_subdirectory(catalyst)
 add_subdirectory(snapServe)
 
+add_executable(clrshm
+  ${CMAKE_CURRENT_SOURCE_DIR}/../runtime/src/bonsai_clrshm.cpp
+)

@@ -533,7 +533,9 @@ int main(int argc, char * argv[])
       stereo,
       callback);
 
-//  while(1) {}
+  delete rDataPtr;
+
+  while(1) {}
   return 0;
 }
 

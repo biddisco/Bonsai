@@ -94,6 +94,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(catalyst ${SRC_FILES})
 if(BONSAI_CATALYST_PARAVIEW)
   message("Adding catalyst links")
-  target_link_libraries(catalyst vtkPVCatalyst vtkPVVTKExtensionsDefault)
+  target_link_libraries(catalyst 
+    vtkPVCatalyst 
+    vtkPVVTKExtensionsDefault 
+    vtkPVPythonCatalyst
+  )
 endif()
 target_link_libraries(catalyst bonsai_tools_common ${MPI_C_LIBRARIES})
