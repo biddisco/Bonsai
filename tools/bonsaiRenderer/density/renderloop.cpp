@@ -2,8 +2,11 @@
 #include <stdio.h>
 #include "renderloop.h"
 #include <array>
+#ifdef _PNG
+#include <png.h>
+#endif
 
-#if 1
+#if 0
 #define WINX 1024
 #define WINY 768
 #elif 0
@@ -12,7 +15,7 @@
 #elif 1
 #define WINX 1920
 #define WINY 1080
-#elif 0
+#elif 1
 #define WINX 3840
 #define WINY 2160
 #elif 1
@@ -392,13 +395,14 @@ float4 lPlaneEquation(float3 v0, float3 v1, float3 v2)
 }
 
 // reducing to improve perf
-#define MAX_PARTICLES 10000000
+#define MAX_PARTICLES 20000000
 
 class Demo
 {
   const int rank, nrank;
   const MPI_Comm &comm;
-  bool isMaster() const { return rank == 0; };
+  int masterRank() const { return 0;}
+  bool isMaster() const { return rank == masterRank(); }
 
 
   public:
@@ -410,9 +414,11 @@ class Demo
       m_renderer(idata.n(), MAX_PARTICLES, rank, nrank, comm),
       //m_displayMode(ParticleRenderer::PARTICLE_SPRITES_COLOR),
       m_displayMode(SmokeRenderer::SPLOTCH_SORTED),
+//      m_displayMode(SmokeRenderer::VOLUMETRIC_NEW),
+//      m_displayMode(SmokeRenderer::VOLUMETRIC),
       //	    m_displayMode(SmokeRenderer::POINTS),
       m_ox(0), m_oy(0), m_buttonState(0), m_inertia(0.2f),
-      m_paused(false),
+      m_autopilot(true),
       m_renderingEnabled(true),
       m_displayBoxes(false), 
       m_domainView(false),
@@ -436,12 +442,13 @@ class Demo
       m_overBright(1.0f),
       m_params(m_renderer.getParams()),
       m_brightFreq(100),
-      m_displayBodiesSec(true),
+      m_displayBodiesSec(false),
       m_cameraRollHome(0.0f),
       m_cameraRoll(0.0f),
       m_enableStats(true)
   {
     assert(rank < nrank);
+    m_frameCount = 0;
     m_windowDims = make_int2(WINX, WINY);
     m_cameraTrans = make_float3(0, 0, -100);
     m_cameraTransLag = m_cameraTrans;
@@ -539,7 +546,7 @@ class Demo
   void toggleStereo() {
     m_stereoEnabled = !m_stereoEnabled;
   }
-  void togglePause() { m_paused = !m_paused; }
+  void togglePause() { m_autopilot = !m_autopilot; }
   void toggleBoxes() { m_displayBoxes = !m_displayBoxes; }
   void toggleDomainView() { m_domainView = !m_domainView; m_renderer.setDomainView(m_domainView); }
   void toggleSliders() { m_displaySliders = !m_displaySliders; }
@@ -652,10 +659,12 @@ class Demo
       m_renderer.setXhighlow(r0, r1);
     }
 
-    if (!m_paused && iterationsRemaining)
+#if 0
+    if (!m_autopilot && iterationsRemaining)
     {
       //iterationsRemaining = !m_tree->iterate_once(m_idata); 
     }
+#endif
     m_simTime = GetTimer() - startTime;
 
     if (!iterationsRemaining)
@@ -666,6 +675,10 @@ class Demo
 
   void drawStats(double fps)
   {
+    long long nbodies_loc = m_idata.getNbodySim();
+    long long nbodies_glb;
+    MPI_Allreduce(&nbodies_loc, &nbodies_glb, 1, MPI_LONG_LONG, MPI_SUM, comm);
+
     if (!m_enableStats)
       return;
 
@@ -687,14 +700,17 @@ class Demo
     float y = glutGet(GLUT_WINDOW_HEIGHT)*4.0f - 200.0f;
     const float lineSpacing = 140.0f;
 
-    float Myr = 0.123; //m_tree->get_t_current() * 9.78f;
-    glPrintf(x, y, "MYears:    %.2f", Myr);
+    float Myr = m_idata.getTime() * 9.767;
+    glPrintf(x, y, "MYears:    %.2f Myr", Myr);
     y -= lineSpacing;
 
-    glPrintf(x, y, "BODIES:    %d", bodies);
+
+    const float gbodies = nbodies_glb * 1.0e-6;
+    glPrintf(x, y, "BODIES:    %.2f Million", gbodies);
     y -= lineSpacing;
 
-    if (m_displayBodiesSec) {
+    if (m_displayBodiesSec) 
+    {
       double frameTime = 1.0 / fps;
       glPrintf(x, y, "BODIES/SEC:%.0f", bodies / frameTime);
       y -= lineSpacing;
@@ -993,11 +1009,96 @@ class Demo
 
   } //end of mainRender
 
+  void dumpImage(const std::string &fileNameBase)
+  {
+    if (!m_autopilot) return;
+    if (!isMaster()) return;
+    if (fileNameBase.empty()) return;
+
+    const double t0 = MPI_Wtime();
+
+    char fileName[1024];
+    sprintf(fileName, "%s_%05d.%s", fileNameBase.c_str(), m_frameCount,
+#ifdef _PNG
+        "png"
+#else
+        "ppm"
+#endif
+        );
+
+    const int winW = m_windowDims.x;
+    const int winH = m_windowDims.y;
+
+    FILE *fout = fopen(fileName, "wb");
+    if (!fout) 
+    {
+      fprintf(stderr, "Couldn't open image file: %s\n", fileName);
+      return;
+    }
+    else
+    {
+      fprintf(stderr , " Writing snapshot into file: %s\n", fileName);
+    }
+
+    static std::vector<char> img;
+    img.resize(3*winW*winH);
+    glReadPixels(0,0,winW,winH,GL_RGB,GL_UNSIGNED_BYTE,&img[0]);
+
+#ifdef _PNG
+    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
+    assert(png_ptr);
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr)
+    {
+       png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+       assert(false);
+    }
+    if (setjmp(png_jmpbuf(png_ptr)))
+    {
+       png_destroy_write_struct(&png_ptr, &info_ptr);
+       fclose(fout);
+       assert(false);
+    }
+    png_init_io(png_ptr, fout);
+    png_set_IHDR(png_ptr, info_ptr, winW, winH,
+        8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+        PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+    png_bytep *row_pointers = (png_bytep*) png_malloc(png_ptr, winH*sizeof(png_bytep));
+    for (int i = 0; i < winH; i++)
+      row_pointers[i] = (png_bytep)&img[0]+ (winH-1-i)*3*winW;
+
+    png_set_rows(png_ptr, info_ptr, row_pointers);
+    png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+    png_free(png_ptr, row_pointers);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+#else
+    fprintf(fout,"P6\n");
+    fprintf(fout,"# ppm-file created by %s\n", "BonsaiRenderer");
+    fprintf(fout,"%i %i\n", winW, winH);
+    fprintf(fout,"255\n");
+    for (int h = 0; h < winH; h++)
+      for (int w = 0; w < winW; w++)
+      {
+        const int i = (winH-1-h)*winW + w;
+        assert(fwrite(&img[3*i], sizeof(char), 3, fout) == 3);
+      }
+#endif
+    fclose(fout);
+    const double t1 = MPI_Wtime();
+    fprintf(stderr, " ... snap writing done in %g sec \n", t1-t0);
+    if (m_frameCount >= m_idata.getCamera().nFrames() && m_autopilot && !fileNameBase.empty())
+      dataSetFunc(-1);
+  }
+
 
   void display() 
   {
+    MPI_Bcast(&m_autopilot, 1, MPI_INT, 0, comm);
     //double startTime = GetTimer();
     //double getBodyDataTime = startTime;
+
+    if (m_autopilot)
+      m_frameCount++;
 
     if (m_renderingEnabled)
     {
@@ -1021,7 +1122,24 @@ class Demo
       m_cameraTransLag = m_cameraTrans;
       m_cameraRotLag = m_cameraRot;
 #endif
-      float cameraTemp[7] = {m_cameraTransLag.x, m_cameraTransLag.y, m_cameraTransLag.z, 
+      if (m_idata.isCameraPath() && m_autopilot)
+      {
+        const auto &cam = m_idata.getCamera().getFrame(m_frameCount-1);
+        m_cameraRotLag  .x = cam. rotx;
+        m_cameraRotLag  .y = cam. roty;
+        m_cameraRotLag  .z = cam. rotz;
+        m_cameraTransLag.x = cam.tranx;
+        m_cameraTransLag.y = cam.trany;
+        m_cameraTransLag.z = cam.tranz;
+
+#if 0
+        m_cameraTrans = m_cameraTransLag;
+        m_cameraRot   = m_cameraRotLag;
+#endif
+      }
+      float cameraTemp[7] = 
+      {
+        m_cameraTransLag.x, m_cameraTransLag.y, m_cameraTransLag.z, 
         m_cameraRotLag.x,   m_cameraRotLag.y,   m_cameraRotLag.z,
         m_cameraRoll
       };
@@ -1098,7 +1216,7 @@ class Demo
         calculateCursorPos();
       }
 
-      if (m_flyMode) {
+      if (m_flyMode && !m_idata.isCameraPath() && m_autopilot) {
         glRotatef(m_cameraRotLag.z, 0.0, 0.0, 1.0);
         glRotatef(m_cameraRotLag.x, 1.0, 0.0, 0.0);
         glRotatef(m_cameraRotLag.y, 0.0, 1.0, 0.0);
@@ -1111,11 +1229,22 @@ class Demo
 
       } else {
         // orbit viwer - rotate around centre, then translate
-        glTranslatef(m_cameraTransLag.x, m_cameraTransLag.y, m_cameraTransLag.z);
-        glRotatef(m_cameraRotLag.x, 1.0, 0.0, 0.0);
-        glRotatef(m_cameraRotLag.y, 0.0, 1.0, 0.0);
-        glRotatef(m_cameraRoll, 0.0, 0.0, 1.0);
-        glRotatef(90.0f, 1.0f, 0.0f, 0.0f); // rotate galaxies into XZ plane
+        if (m_idata.isCameraPath() && m_autopilot)
+        {
+          glLoadIdentity();
+          glRotatef(m_cameraRotLag.x, 1.0, 0.0, 0.0);
+          glRotatef(m_cameraRotLag.y, 0.0, 1.0, 0.0);
+          glRotatef(m_cameraRotLag.z, 0.0, 0.0, 1.0);
+          glTranslatef(m_cameraTransLag.x, m_cameraTransLag.y, m_cameraTransLag.z);
+        }
+        else
+        {
+          glTranslatef(m_cameraTransLag.x, m_cameraTransLag.y, m_cameraTransLag.z);
+          glRotatef(m_cameraRotLag.x, 1.0, 0.0, 0.0);
+          glRotatef(m_cameraRotLag.y, 0.0, 1.0, 0.0);
+          glRotatef(m_cameraRoll, 0.0, 0.0, 1.0);
+          glRotatef(90.0f, 1.0f, 0.0f, 0.0f); // rotate galaxies into XZ plane
+        }
       }
 
       glGetDoublev(GL_MODELVIEW_MATRIX, m_modelView);
@@ -1321,6 +1450,7 @@ class Demo
         toggleDomainView();
         break;
       case ' ':
+        fprintf(stderr, " Toggle autopilot @ frame= %d\n", m_frameCount);
         togglePause();
         break;
       case 27: // escape
@@ -1343,7 +1473,7 @@ class Demo
         break;
       case 'r':
       case 'R':
-        toggleRendering();
+        /* toggleRendering(); */
         break;
       case 'l':
       case 'L':
@@ -1647,12 +1777,17 @@ class Demo
 
   void getBodyData()
   {
+    static auto curMode = m_renderer.getDisplayMode();
+    const bool reload = m_renderer.getDisplayMode() != curMode;
+    curMode = m_renderer.getDisplayMode();
 
-    if (!m_idata.isNewData())
+
+    if (!m_idata.isNewData() && !reload)
     {
       m_renderer.depthSort(m_particlePos);
       return;
     }
+
 
     int n = m_idata.n();
 
@@ -1664,7 +1799,8 @@ class Demo
     float velMin = m_idata.attributeMin(RendererData::VEL);
     float rhoMax = m_idata.attributeMax(RendererData::RHO);
     float rhoMin = m_idata.attributeMin(RendererData::RHO);
-    const bool hasRHO = rhoMax > 0.0;
+    bool hasRHO = rhoMax > 0.0;
+
     const float scaleVEL =          1.0/(velMax - velMin);
     const float scaleRHO = hasRHO ? 1.0/(rhoMax - rhoMin) : 0.0;
 
@@ -1704,7 +1840,22 @@ class Demo
 
         /* assign color */
         const int type =  ID.getType();
-	const size_t IDval = ID.getID();
+        size_t IDval = ID.getID();
+
+        bool hasRHO = rhoMax > 0.0;
+        if (m_renderer.getDisplayMode() == SmokeRenderer::VOLUMETRIC)
+        {
+          hasRHO = false;
+        }
+        int typeBase = 0;
+        if (m_renderer.getDisplayMode() == SmokeRenderer::VOLUMETRIC_NEW)
+        {
+          const int ns = 16;
+          hasRHO = (IDval%ns) != 0;
+          IDval /= ns;
+          typeBase = 128;
+        }
+
         float4 color = make_float4(0.0f);
         if (hasRHO)
         {
@@ -1720,8 +1871,16 @@ class Demo
           Cstar.x = colorMap[iy][ix][0];
           Cstar.y = colorMap[iy][ix][1];
           Cstar.z = colorMap[iy][ix][2];
-          Cstar.w = type;
+          Cstar.w = type + typeBase;
           color   = Cstar;
+#if 1
+          if (typeBase == 128)
+          {
+            color.x *= 1.0/256;
+            color.y *= 1.0/256;
+            color.z *= 1.0/256;
+          }
+#endif
         }
         else
         {
@@ -1746,7 +1905,7 @@ class Demo
               const float Mstar = sDisk.sampleMass(IDval);
               const float4 Cstar = sDisk.getColour(Mstar);
               color = ((IDval & 1023) == 0) ? /* one in 1000 stars glows a bit */
-              sGlow.getColour(sGlow.sampleMass(IDval)) :  (0) ? color : make_float4(Cstar.x*0.01f, Cstar.y*0.01f, Cstar.z*0.01f, Cstar.w);
+                sGlow.getColour(sGlow.sampleMass(IDval)) :  (0) ? color : make_float4(Cstar.x*0.01f, Cstar.y*0.01f, Cstar.z*0.01f, Cstar.w);
               color.w = 1.0f;
               break;
             }              
@@ -1784,7 +1943,9 @@ class Demo
     m_renderer.setSizes((float*)sizes);
 
     m_renderer.depthSort(m_particlePos);
-    m_idata.unsetNewData();
+
+    if (m_idata.unsetNewData())  /* return true only if this was first data */
+      fitCamera();
   }
 
 
@@ -1941,7 +2102,7 @@ class Demo
   float m_screenZ;
   bool m_stereoEnabled;
 
-  bool m_paused;
+  bool m_autopilot;
   bool m_displayBoxes;
   bool m_domainView;
   bool m_displaySliders;
@@ -1960,6 +2121,7 @@ class Demo
   double m_simTime, m_renderTime;
   double m_fps;
   int m_fpsCount, m_fpsLimit;
+  int m_frameCount;
 
   bool m_supernova;
   float m_overBright;
@@ -2050,6 +2212,7 @@ unsigned long long fpsCount;
 double timeBegin;
 static int thisRank;
 static MPI_Comm thisComm;
+static std::string imageFileName;
 void display()
 {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -2058,6 +2221,8 @@ void display()
   MPI_Barrier(thisComm);
   const double t0 = MPI_Wtime();
   theDemo->display();
+
+  theDemo->dumpImage(imageFileName);
 
   //glutReportErrors();
   glutSwapBuffers();
@@ -2094,10 +2259,13 @@ void display()
     //  fpsCount = 0;
     // fpsLimit = (fps > 1.f) ? (int)fps : 1;
 
-    if (theDemo->m_paused)
+
+#if 0
+    if (theDemo->m_autopilot)
     {
       fpsLimit = 0;
     }
+#endif
 
     //    cudaEventRecord(startEvent, 0);
   }
@@ -2423,7 +2591,8 @@ void initAppRenderer(int argc, char** argv,
     RendererData &idata,
     const char *fullScreenMode,
     const bool stereo,
-    std::function<void(int)> &func)
+    std::function<void(int)> &func,
+    const std::string imagefn)
 {
   dataSetFunc = func;
   thisRank = rank;
@@ -2431,6 +2600,7 @@ void initAppRenderer(int argc, char** argv,
   assert(rank < nrank);
   assert(idata.n() <= MAX_PARTICLES);
   initGL(argc, argv, rank, nrank, comm, fullScreenMode, stereo);
+  imageFileName = imagefn;
   theDemo = new Demo(idata, rank, nrank, comm);
   if (stereo)
     theDemo->toggleStereo(); //SV assuming stereo is set to disable by default.

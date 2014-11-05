@@ -7,7 +7,7 @@ CFLAGS =  -Wall -Werror
 CUDA_TK  = /usr/local/cuda
 # CUDA_TK = $(HOME)/usr/local/cuda-5.5
 
-CXXFLAGS = -Wall -fopenmp -std=c++11  -fPIE 
+CXXFLAGS += -Wall -fopenmp -std=c++11  -fPIE 
 CXXFLAGS += -Werror
 #ignore warnings caused by openmpi
 CXXFLAGS += -Wno-literal-suffix
@@ -40,6 +40,11 @@ LDFLAGS = -lGL -lGLU -lglut -lGLEW -fopenmp -lrt
 LDFLAGS += -pie -rdynamic
 #-L$(PWD)/lib/linux -lGLEW_x86_64
 
+
+ifeq ($(PROFILE),1)
+	CXXFLAGS += -D__COMPOSITE_PROFILE
+endif
+
 ifeq ($(ICET),1)
 	ICETPATH=../../IceT
 	INCLUDE_FLAGS += -I$(ICETPATH)/include  
@@ -51,6 +56,11 @@ ifeq ($(APPLEOSX),1)
 	INCLUDE_FLAGS += -I/opt/local/include
 	CXXFLAGS +=-Wno-deprecated-declarations 
 	LDFLAGS = -framework OpenGL -L/opt/local/lib -lglut -lglew -fopenmp
+endif
+
+ifeq ($(PNG),1)
+	CXXFLAGS += -D_PNG
+	LDFLAGS += -lpng
 endif
 
 OBJ = main.o $(ENGINE)/renderloop.o anyoption.o $(ENGINE)/renderer.o paramgl.o RendererData.o RendererDataDistribute.o
@@ -103,7 +113,7 @@ clean_bak:
 
 
 
-$(OBJ): anyoption.h  paramgl.h  param.h   RendererData.h  $(ENGINE)/renderloop.h  $(ENGINE)/renderer.h  vector_math.h \
+$(OBJ): CameraPath.h anyoption.h  paramgl.h  param.h   RendererData.h  $(ENGINE)/renderloop.h  $(ENGINE)/renderer.h  vector_math.h \
 	splotch/Blending.h  splotch/GLSLProgram.h  splotch/MathArray.h  splotch/renderer.h  splotch/renderloop.h  splotch/Splotch.h  splotch/Texture.h  splotch/Vertex.h 
 
 

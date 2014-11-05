@@ -79,16 +79,32 @@ bool fetchSharedData(const bool quickSync, RendererData &rData, const int rank, 
 #endif
 
   // header
-  header.acquireLock();
+
+
+  int sumL, sumG ;
+  if (quickSync)
+  {
+    while(1)
+    {
+      header.acquireLock();
+      sumL = !header[0].done_writing;
+      MPI_Allreduce(&sumL, &sumG, 1, MPI_INT, MPI_SUM, comm);
+      if (sumG == nrank)
+        break;
+      header.releaseLock();
+      usleep(1000);
+    }
+  }
+  else
+  {
+    header.acquireLock();
+    const float tCurrent = header[0].tCurrent;
+    sumL = tCurrent != tLast;
+    MPI_Allreduce(&sumL, &sumG, 1, MPI_INT, MPI_SUM, comm);
+  }
+
   const float tCurrent = header[0].tCurrent;
-
   terminateRenderer = tCurrent == -1;
-
-  int sumL = quickSync ? !header[0].done_writing : tCurrent != tLast;
-  int sumG ;
-  MPI_Allreduce(&sumL, &sumG, 1, MPI_INT, MPI_SUM, comm);
-
-
   bool completed = false;
   if (sumG == nrank) //tCurrent != tLast)
   {
@@ -139,6 +155,7 @@ bool fetchSharedData(const bool quickSync, RendererData &rData, const int rank, 
 
 
     rData.resize(nS);
+    rData.setTime(tCurrent);
     size_t ip = 0;
     for (size_t i = 0; i < size; i++)
     {
@@ -164,11 +181,12 @@ bool fetchSharedData(const bool quickSync, RendererData &rData, const int rank, 
       assert(ip <= nS);
     }
     rData.resize(ip);
+    rData.setNbodySim(ip);
 
     data.releaseLock();
+    header[0].done_writing = true;
   }
 
-  header[0].done_writing = true;
   header.releaseLock();
 
 #if 0
@@ -239,11 +257,11 @@ static T* readBonsai(
     const int reduceS,
     const bool print_header = false)
 {
-  BonsaiIO::Core out(rank, nranks, comm, BonsaiIO::READ, fileName);
+  BonsaiIO::Core in(rank, nranks, comm, BonsaiIO::READ, fileName);
   if (rank == 0 && print_header)
   {
     fprintf(stderr, "---- Bonsai header info ----\n");
-    out.getHeader().printFields();
+    in.getHeader().printFields();
     fprintf(stderr, "----------------------------\n");
   }
   typedef float float4[4];
@@ -257,13 +275,13 @@ static T* readBonsai(
 
   if (reduceS > 0)
   {
-    if (!out.read(IDListS, true, reduceS)) return NULL;
+    if (!in.read(IDListS, true, reduceS)) return NULL;
     if (rank  == 0)
       fprintf(stderr, " Reading star data \n");
-    assert(out.read(posS,    true, reduceS));
-    assert(out.read(velS,    true, reduceS));
+    assert(in.read(posS,    true, reduceS));
+    assert(in.read(velS,    true, reduceS));
     bool renderDensity = true;
-    if (!out.read(rhohS,  true, reduceS))
+    if (!in.read(rhohS,  true, reduceS))
     {
       if (rank == 0)
       {
@@ -286,11 +304,11 @@ static T* readBonsai(
   {
     if (rank  == 0)
       fprintf(stderr, " Reading DM data \n");
-    if(!out.read(IDListDM, true, reduceDM)) return NULL;
-    assert(out.read(posDM,    true, reduceDM));
-    assert(out.read(velDM,    true, reduceDM));
+    if(!in.read(IDListDM, true, reduceDM)) return NULL;
+    assert(in.read(posDM,    true, reduceDM));
+    assert(in.read(velDM,    true, reduceDM));
     bool renderDensity = true;
-    if (!out.read(rhohDM,  true, reduceDM))
+    if (!in.read(rhohDM,  true, reduceDM))
     {
       if (rank == 0)
       {
@@ -322,7 +340,15 @@ static T* readBonsai(
 
   T *rDataPtr = new T(rank,nranks,comm);
   rDataPtr->resize(nS+nDM);
+  rDataPtr->setTime(in.getTime());
+  rDataPtr->setNbodySim(nS+nDM);
+  in.close();
   auto &rData = *rDataPtr;
+
+  constexpr int ntypecount = 10;
+  std::array<size_t,ntypecount> ntypeloc, ntypeglb;
+  std::fill(ntypeloc.begin(), ntypeloc.end(), 0);
+
   for (int i = 0; i < nS; i++)
   {
     const int ip = i;
@@ -347,9 +373,12 @@ static T* readBonsai(
       rData.attribute(RendererData::RHO, ip) = 0.0;
       rData.attribute(RendererData::H,   ip) = 0.0;
     }
+    if (rData.ID(ip).getType() < ntypecount)
+      ntypeloc[rData.ID(ip).getType()]++;
   }
   for (int i = 0; i < nDM; i++)
   {
+    ntypeloc[0]++;
     const int ip = i + nS;
     rData.posx(ip) = posDM[i][0];
     rData.posy(ip) = posDM[i][1];
@@ -372,6 +401,19 @@ static T* readBonsai(
       rData.attribute(RendererData::RHO, ip) = 0.0;
       rData.attribute(RendererData::H,   ip) = 0.0;
     }
+  }
+  
+  MPI_Reduce(&ntypeloc, &ntypeglb, ntypecount, MPI_LONG_LONG, MPI_SUM, 0, comm);
+  if (rank == 0)
+  {
+    size_t nsum = 0;
+    for (int type = 0; type < ntypecount; type++)
+    {
+      nsum += ntypeglb[type];
+      if (ntypeglb[type] > 0)
+        fprintf(stderr, "bonsai-read: ptype= %d:  np= %zu \n",type, ntypeglb[type]);
+    }
+    assert(nsum > 0);
   }
 
   return rDataPtr;
@@ -488,6 +530,11 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
   bool quickSync = true;
   int sleeptime = 1;
 
+  std::string imageFileName;
+  std::string cameraFileName;
+  int nCameraFrame = 0;
+
+
   {
 		AnyOption opt;
 
@@ -510,6 +557,9 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
 		ADDUSAGE(" -d  --doDD             enable domain decomposition  [disabled]");
     ADDUSAGE(" -s  --nmaxsample   #   set max number of samples for DD [" << nmaxsample << "]");
     ADDUSAGE(" -D  --display      #   set DISPLAY=display, otherwise inherited from environment");
+    ADDUSAGE("     --camera       #   camera path file");
+    ADDUSAGE("     --cameraframe  #   Reframe original camera path to # frames. [ignore]");
+    ADDUSAGE("     --image        #   image base filename");
 
 
 		opt.setFlag  ( "help" ,        'h');
@@ -519,6 +569,9 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
 		opt.setOption( "sleep");
 		opt.setOption( "reduceS");
     opt.setOption( "fullscreen");
+    opt.setOption( "camera");
+    opt.setOption( "cameraframe");
+    opt.setOption( "image");
     opt.setFlag("stereo");
     opt.setFlag("doDD", 'd');
     opt.setOption("nmaxsample", 's');
@@ -548,7 +601,10 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
     if (opt.getFlag("doDD"))  doDD = true;
     if ((optarg = opt.getValue("display"))) display = std::string(optarg);
     if ((optarg = opt.getValue("sleep"))) sleeptime = atoi(optarg);
-    if (opt.getValue("noquicksync")) quickSync = false;
+    if (opt.getFlag("noquicksync")) quickSync = false;
+    if ((optarg = opt.getValue("image"))) imageFileName = std::string(optarg);
+    if ((optarg = opt.getValue("camera"))) cameraFileName = std::string(optarg);
+    if ((optarg = opt.getValue("cameraframe"))) nCameraFrame = std::atoi(optarg);
 
     if ((fileName.empty() && !inSitu) ||
         reduceDM < 0 || reduceS < 0)
@@ -622,6 +678,22 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
   assert(rDataPtr != 0);
  
 
+  CameraPath *camera = nullptr;
+  if (!cameraFileName.empty())
+  {
+    camera = new CameraPath(cameraFileName);
+    rDataPtr->setCameraPath(camera); 
+    if (nCameraFrame > 0)
+    {
+       if (rank == 0)
+         fprintf(stderr, " Reframe camera from %d -> %d \n",
+             camera->nFrames(), nCameraFrame);
+       camera->reframe(nCameraFrame);
+
+    }
+  }
+
+
   auto dataSetFunc = [&](const int code) -> void 
   {
     int quitL = (code == -1) || terminateRenderer;  /* exit code */
@@ -629,6 +701,7 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
     MPI_Allreduce(&quitL, &quitG, 1, MPI_INT, MPI_SUM, comm);
     if (quitG)
     {
+      delete camera;
       MPI_Finalize();
       ::exit(0);
     }
@@ -636,11 +709,18 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
     if (inSitu )
       if (fetchSharedData(quickSync, *rDataPtr, rank, nranks, comm, reduceDM, reduceS))
       {
-        rescaleData(*rDataPtr, rank,nranks,comm, doDD,nmaxsample);
-        rDataPtr->setNewData();
+        int nTotal, nLocal = rDataPtr->size();
+	MPI_Allreduce(&nLocal, &nTotal, 1, MPI_INT, MPI_SUM, comm);
+
+        if (nTotal > 0)
+        {
+          rescaleData(*rDataPtr, rank,nranks,comm, doDD,nmaxsample);
+          rDataPtr->setNewData();
+        }
       }
   };
   std::function<void(int)> updateFunc = dataSetFunc;
+
 
 
   dataSetFunc(0);
@@ -658,7 +738,8 @@ int main(int argc, char * argv[], MPI_Comm commWorld)
       *rDataPtr,
       fullScreenMode.c_str(), 
       stereo,
-      updateFunc);
+      updateFunc,
+      imageFileName);
 
   while(1) 
   return 0;

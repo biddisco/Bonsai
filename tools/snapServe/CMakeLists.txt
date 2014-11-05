@@ -49,9 +49,10 @@ endif()
 #
 # source files
 #
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../common)
 set(SRC_FILES 
   main.cpp
-)
+  )
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 

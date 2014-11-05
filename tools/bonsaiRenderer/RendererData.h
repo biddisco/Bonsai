@@ -7,6 +7,7 @@
 #include <parallel/algorithm>
 #include <iostream>
 #include "IDType.h"
+#include "CameraPath.h"
 
 #if 0
 struct float2 { float x, y; };
@@ -69,21 +70,41 @@ class RendererData
     void minmaxAttributeGlb(const Attribute_t p);
     int  getMaster() const { return 0; }
     bool isMaster() const { return getMaster() == rank; }
+    
+    const CameraPath *cameraPtr;
 
+    bool firstData;
+    double time;
+    size_t nBodySim;
 
   public:
     RendererData(const int rank, const int nrank, const MPI_Comm &comm) : 
-      rank(rank), nrank(nrank), comm(comm)
+      rank(rank), nrank(nrank), comm(comm), cameraPtr(nullptr), firstData(true)
   {
     assert(rank < nrank);
     new_data = false;
   }
 
+    double getTime() const { return time; }
+    void setTime(const double time) { this->time = time; }
+    void setNbodySim(const size_t n) { nBodySim = n; }
+    size_t getNbodySim() const { return nBodySim; }
+
+    void setCameraPath(const CameraPath *ptr) { cameraPtr = ptr; }
+    bool isCameraPath() const { return cameraPtr != nullptr; }
+    const CameraPath& getCamera() const {return *cameraPtr;}
+
     void setNewData() {new_data = true;}
-    void unsetNewData() { new_data = false; }
+    bool unsetNewData() { 
+      new_data = false; 
+      const bool ret = firstData;
+      firstData = false;
+      return ret;
+    }
     bool isNewData() const {return new_data;}
 
     int n() const { return data.size(); }
+    int size() const { return data.size(); }
     void resize(const int n) { data.resize(n); }
     ~RendererData() {}
 
