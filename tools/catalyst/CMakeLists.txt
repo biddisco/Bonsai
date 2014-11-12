@@ -31,22 +31,22 @@ include_directories(${MPI_C_INCLUDE_PATH})
 #--------------------------------------------------
 # ParaView
 #--------------------------------------------------
-
-
-if(BONSAI_CATALYST_PARAVIEW)
-
-  find_package(ParaView 4.1 REQUIRED COMPONENTS vtkPVCatalyst vtkPVVTKExtensionsDefault)
-  include("${PARAVIEW_USE_FILE}")
-  message("Paraview cmake dir is ${ParaView_CMAKE_DIR}")
-  include_directories(
-    ${ParaView_CMAKE_DIR}/../CoProcessing/PythonCatalyst
-    ${ParaView_DIR}/CoProcessing/PythonCatalyst  
-  )
-  set(CATALYST_ADAPTOR_SRCS
-    BonsaiCatalystData.cpp
-    vtkBonsaiPipeline.cpp
-  )
+option(BONSAI_CATALYST_PYTHON "USe python pipeline in catalyst coprocessor" ON)
+if(BONSAI_CATALYST_PYTHON)
+  add_definitions(-DBONSAI_CATALYST_PYTHON)
 endif()
+
+find_package(ParaView 4.1 REQUIRED COMPONENTS vtkPVCatalyst vtkPVVTKExtensionsDefault)
+include("${PARAVIEW_USE_FILE}")
+message("Paraview cmake dir is ${ParaView_CMAKE_DIR}")
+include_directories(
+  ${ParaView_CMAKE_DIR}/../CoProcessing/PythonCatalyst
+  ${ParaView_DIR}/CoProcessing/PythonCatalyst  
+)
+set(CATALYST_ADAPTOR_SRCS
+  BonsaiCatalystData.cpp
+  vtkBonsaiPipeline.cpp
+)
 
 #--------------------------------------------------
 # Flags to get code compiling with clang on mac
@@ -67,7 +67,7 @@ endif()
 # On mac, if we use cuda we need stdlibc++
 # add an option to use boost where std:: isn't available
 #--------------------------------------------------
-option(BONSAI_CATALYST_USE_STDLIB OFF "Use stdlibc++ instead of libc++")
+option(BONSAI_CATALYST_USE_STDLIB "Use stdlibc++ instead of libc++" OFF)
 if(BONSAI_CATALYST_USE_STDLIB)
   add_definitions(-DBONSAI_CATALYST_STDLIB)
   #-----------------------------------------------

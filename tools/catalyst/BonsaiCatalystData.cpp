@@ -30,7 +30,7 @@ BonsaiCatalystData::BonsaiCatalystData(const int rank, const int nrank, const MP
     vtkMPICommunicatorOpaqueComm vcomm(const_cast<MPI_Comm*>(&comm));
     coProcessor->Initialize(vcomm);
 
-#ifdef PYTHON_CATALYST
+#ifdef BONSAI_CATALYST_PYTHON
     std::string cPythonFileName = "/Users/biddisco/build/bcatalyst/live2.py";
     std::cout << "Creating python pipeline " << std::endl;
     vtkCPPythonScriptPipeline* pyPipeline = vtkCPPythonScriptPipeline::New();

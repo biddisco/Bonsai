@@ -18,7 +18,7 @@ SET (CMAKE_ARCHIVE_OUTPUT_DIRECTORY
 # On mac, if we use cuda we need stdlibc++
 # add an option to use boost where std:: isn't available
 #--------------------------------------------------
-option(BONSAI_CATALYST_USE_STDLIB OFF "Use stdlibc++ instead of libc++")
+option(BONSAI_CATALYST_USE_STDLIB "Use stdlibc++ instead of libc++" OFF)
 if(BONSAI_CATALYST_USE_STDLIB)
   add_definitions(-DBONSAI_CATALYST_STDLIB)
   #-----------------------------------------------
@@ -58,7 +58,7 @@ add_subdirectory(snapServe)
 #--------------------------------------------------
 # ParaView
 #--------------------------------------------------
-option(BONSAI_CATALYST_PARAVIEW ON "Link to ParaView")
+option(BONSAI_CATALYST_PARAVIEW "Link to ParaView" ON)
 if(BONSAI_CATALYST_PARAVIEW)
   add_subdirectory(catalyst)
 endif()
