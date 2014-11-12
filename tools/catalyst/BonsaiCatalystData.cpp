@@ -1,6 +1,7 @@
 #include "BonsaiCatalystData.h"
 #include "vtkBonsaiPipeline.h"
 //
+#include <vtkMPI.h>
 #include "vtkCPDataDescription.h"
 #include "vtkCPInputDataDescription.h"
 #include "vtkCPProcessor.h"
@@ -24,23 +25,27 @@ BonsaiCatalystData::BonsaiCatalystData(const int rank, const int nrank, const MP
 
   if(!coProcessor)
     {
-    coProcessor = vtkSmartPointer<vtkCPProcessor>::New();
-    coProcessor->Initialize();    std::string cPythonFileName = "/Users/biddisco/build/bcatalyst/live2.py";
     std::string outFilename = "/Users/biddisco/build/bcatalyst/bdata-1.vtk";
+    coProcessor = vtkSmartPointer<vtkCPProcessor>::New();
+    vtkMPICommunicatorOpaqueComm vcomm(const_cast<MPI_Comm*>(&comm));
+    coProcessor->Initialize(vcomm);
 
+#ifdef PYTHON_CATALYST
+    std::string cPythonFileName = "/Users/biddisco/build/bcatalyst/live2.py";
     std::cout << "Creating python pipeline " << std::endl;
     vtkCPPythonScriptPipeline* pyPipeline = vtkCPPythonScriptPipeline::New();
 
     std::cout << "Initializing python pipeline " << std::endl;
     pyPipeline->Initialize(cPythonFileName.c_str());
     std::cout << "Python pipeline initialized " << std::endl;
-
-//    cxxPipeline = vtkSmartPointer<vtkBonsaiPipeline>::New();
-//    cxxPipeline->Initialize(1,outFilename);
-
-
-//    coProcessor->AddPipeline(cxxPipeline);
     coProcessor->AddPipeline(pyPipeline);
+#else
+    std::cout << "Creating cxx pipeline " << std::endl;
+    cxxPipeline = vtkSmartPointer<vtkBonsaiPipeline>::New();
+    std::cout << "Initializing cxx pipeline " << std::endl;
+    cxxPipeline->Initialize(1,outFilename);
+    coProcessor->AddPipeline(cxxPipeline);
+#endif
     }
   if(!coProcessorData)
     {
