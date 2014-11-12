@@ -25,10 +25,12 @@ class DynamicLoader
   public:
     DynamicLoader(const std::string &filename) :
       m_handle(dlopen(filename.c_str(), RTLD_LAZY)) 
-  {
-    if (!m_handle)
-      throw std::logic_error("can't load library named \"" + filename + "\"");
-  }
+    {
+      if (!m_handle) {
+        const char* error = dlerror();
+        throw std::logic_error("error " + std::string(error) + " loading : \"" + filename + "\"");
+      }
+    }
 
     template<class T> bonsaistd::function<T> load(const std::string &functionName) const
     {
@@ -40,7 +42,9 @@ class DynamicLoader
         if (error)
           throw std::logic_error("can't find symbol named \"" + functionName + "\": " + error);
       }
-
+      else {
+        std::cout <<"We got a valid address of the function " << functionName.c_str() << std::endl;
+      }
       return reinterpret_cast<T*>(result);
     }
 };
@@ -57,14 +61,17 @@ static std::vector<std::string> lSplitString(const std::string &s, const char de
   return elems;
 }
 
-static std::vector<std::vector<std::string>> lParseInput()
+static std::vector<std::vector<std::string>> lParseInput(int rank)
 {
   std::string input;
   std::string tmp;
-  while(std::getline(std::cin, tmp)) 
-    input += tmp + "\n";
-
-  int size[2] = {static_cast<int>(input.size()), static_cast<int>(input.capacity())};
+  int size[2] = {0,0};
+  if (rank==0) {
+    while(std::getline(std::cin, tmp))
+      input += tmp + "\n";
+    size[0] = static_cast<int>(input.size());
+    size[1] = static_cast<int>(input.capacity());
+  }
   MPI_Bcast((void*)&size, 2, MPI_INT, 0, MPI_COMM_WORLD);
   input.resize (size[0]);
   input.reserve(size[1]);
@@ -90,8 +97,7 @@ int main(int argc, char *argv[])
   int rank, nrank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &nrank);
-
-  const auto &programs = lParseInput();
+  const auto &programs = lParseInput(rank);
 
   if (rank == 0)
   {
@@ -122,9 +128,9 @@ int main(int argc, char *argv[])
   const auto &arguments = programs[color];
   const std::string &libName = arguments[0];
 
+  std::cerr << "program for rank " << rank << " is " << libName.c_str() << std::endl;
   const DynamicLoader dll(libName);
-  const auto program = dll.load<void(int,char**,MPI_Comm)>("main");
-
+  const auto program = dll.load<void(int,char**,MPI_Comm)>("bonsai_main");
   std::vector<char*> argVec;
   for (const auto &arg : arguments)
     argVec.push_back((char*)arg.c_str());

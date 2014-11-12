@@ -289,13 +289,13 @@ static std::vector<std::string> lParseList(const std::string fileNameList)
   return fileList;
 }
 
-#ifndef BONSAI_CATALYST_CLANG
-int main(int argc, char * argv[], MPI_Comm commWorld)
-{
-#else
+#ifndef MAIN_WITH_MPI
 int main(int argc, char * argv[])
 {
- MPI_Comm commWorld;
+MPI_Comm commWorld;
+#else
+extern "C" int bonsai_main(int argc, char * argv[], MPI_Comm commWorld)
+{
 #endif
 
   std::string fileNameList;

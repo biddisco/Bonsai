@@ -354,13 +354,13 @@ static T* readBonsai(
   return rDataPtr;
 }
 
-#ifndef BONSAI_CATALYST_CLANG
-int main(int argc, char * argv[], MPI_Comm commWorld)
-{
-#else
+#ifndef MAIN_WITH_MPI
 int main(int argc, char * argv[])
 {
- MPI_Comm commWorld;
+MPI_Comm commWorld;
+#else
+extern "C" int bonsai_main(int argc, char * argv[], MPI_Comm commWorld)
+{
 #endif
 
   std::string fileName;
@@ -461,7 +461,7 @@ int main(int argc, char * argv[])
   char processor_name[MPI_MAX_PROCESSOR_NAME];
   int namelen;
   MPI_Get_processor_name(processor_name,&namelen);
-  fprintf(stderr, "bonsai_renderer:: Proc id: %d @ %s , total processes: %d (mpiInit) \n", rank, processor_name, nranks);
+  fprintf(stderr, "bonsai_catalyst:: Proc id: %d @ %s , total processes: %d (mpiInit) \n", rank, processor_name, nranks);
 
   if (rank == 0)
   {
@@ -480,8 +480,6 @@ int main(int argc, char * argv[])
   if (rank == 0)
     fprintf(stderr, " Sleeping for %d seconds \n", sleeptime);
   sleep(sleeptime);
-
-
 
   using BonsaiCatalystDataT = BonsaiCatalystData;
   BonsaiCatalystDataT *rDataPtr;
@@ -506,6 +504,8 @@ int main(int argc, char * argv[])
 
   assert(rDataPtr != 0);
 
+  std::cout << "Entering main render/callback loop" << std::endl;
+
 
   auto callbackFunc = [&](const int code) 
   {
@@ -528,6 +528,7 @@ int main(int argc, char * argv[])
   bonsaistd::function<void(int)> callback = callbackFunc;
   callback(0);  /* init data set */
 
+  std::cout << " Calling renderer function " << std::endl;
   renderer(
       argc, argv, 
       rank, nranks, comm,

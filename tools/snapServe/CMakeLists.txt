@@ -58,12 +58,22 @@ set(SRC_FILES
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 #
-# exe
+# exe, compile twice, once with normal int main()
+# the second with the MPI_COMM_WORLD enhanced int main(...)
 #
-add_executable(bonsai_snapServe ${SRC_FILES})
+add_executable(bonsai_snapserve ${SRC_FILES})
+add_library(bonsai_snapserve_mpi SHARED ${SRC_FILES})
+set_target_properties (bonsai_snapserve_mpi 
+  PROPERTIES 
+    COMPILE_DEFINITIONS "MAIN_WITH_MPI"
+    COMPILE_FLAGS -Wno-main
+)
+ 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-  target_link_libraries(bonsai_snapServe bonsai_tools_common ${MPI_C_LIBRARIES} -rdynamic) 
+  target_link_libraries(bonsai_snapserve     bonsai_tools_common ${MPI_C_LIBRARIES} -rdynamic) 
+  target_link_libraries(bonsai_snapserve_mpi bonsai_tools_common ${MPI_C_LIBRARIES} -rdynamic) 
 else()
-  target_link_libraries(bonsai_snapServe bonsai_tools_common ${MPI_C_LIBRARIES} -lrt -rdynamic -pie)
+  target_link_libraries(bonsai_snapserve     bonsai_tools_common ${MPI_C_LIBRARIES} -lrt -rdynamic -pie)
+  target_link_libraries(bonsai_snapserve_mpi bonsai_tools_common ${MPI_C_LIBRARIES} -lrt -rdynamic -pie)
 endif()
 

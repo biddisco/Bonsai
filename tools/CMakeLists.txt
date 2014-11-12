@@ -35,14 +35,31 @@ add_library(bonsai_tools_common
   common/anyoption.cpp
 )
 
-add_subdirectory(catalyst)
-add_subdirectory(snapServe)
-
-add_executable(bonsai_clrshm
-  ${CMAKE_CURRENT_SOURCE_DIR}/../runtime/src/bonsai_clrshm.cpp
-)
-
+#--------------------------------------------------
+# driver
+#--------------------------------------------------
 add_executable(bonsai_driver
   ../runtime/src/driver.cpp
 )
 target_link_libraries(bonsai_driver ${MPI_C_LIBRARIES})
+
+#--------------------------------------------------
+# clrshm
+#--------------------------------------------------
+add_executable(bonsai_clrshm
+  ${CMAKE_CURRENT_SOURCE_DIR}/../runtime/src/bonsai_clrshm.cpp
+)
+
+#--------------------------------------------------
+# snapserve
+#--------------------------------------------------
+add_subdirectory(snapServe)
+
+#--------------------------------------------------
+# ParaView
+#--------------------------------------------------
+option(BONSAI_CATALYST_PARAVIEW ON "Link to ParaView")
+if(BONSAI_CATALYST_PARAVIEW)
+  add_subdirectory(catalyst)
+endif()
+

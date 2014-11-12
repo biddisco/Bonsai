@@ -31,7 +31,8 @@ include_directories(${MPI_C_INCLUDE_PATH})
 #--------------------------------------------------
 # ParaView
 #--------------------------------------------------
-option(BONSAI_CATALYST_PARAVIEW ON "Link to ParaView")
+
+
 if(BONSAI_CATALYST_PARAVIEW)
 
   find_package(ParaView 4.1 REQUIRED COMPONENTS vtkPVCatalyst vtkPVVTKExtensionsDefault)
@@ -92,12 +93,25 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 # exe
 #
 add_executable(bonsai_catalyst ${SRC_FILES})
-if(BONSAI_CATALYST_PARAVIEW)
-  message("Adding catalyst links")
-  target_link_libraries(bonsai_catalyst 
-    vtkPVCatalyst 
-    vtkPVVTKExtensionsDefault 
-    vtkPVPythonCatalyst
-  )
-endif()
-target_link_libraries(bonsai_catalyst bonsai_tools_common ${MPI_C_LIBRARIES})
+target_link_libraries(bonsai_catalyst 
+  vtkPVCatalyst 
+  vtkPVVTKExtensionsDefault 
+  vtkPVPythonCatalyst
+  bonsai_tools_common 
+  ${MPI_C_LIBRARIES}
+)
+
+add_library(bonsai_catalyst_mpi SHARED ${SRC_FILES})
+set_target_properties (bonsai_catalyst_mpi 
+  PROPERTIES 
+    COMPILE_DEFINITIONS "MAIN_WITH_MPI"
+    COMPILE_FLAGS "-Wno-main -nostartfiles"
+)
+target_link_libraries(bonsai_catalyst_mpi
+  vtkPVCatalyst 
+  vtkPVVTKExtensionsDefault 
+  vtkPVPythonCatalyst
+  bonsai_tools_common 
+  ${MPI_C_LIBRARIES}
+)
+
