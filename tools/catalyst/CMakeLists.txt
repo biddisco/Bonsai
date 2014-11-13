@@ -79,6 +79,19 @@ if(BONSAI_CATALYST_USE_STDLIB)
 endif()
   
 #--------------------------------------------------
+# Option to set where the PYTHON script that will be used 
+# for coprocessing
+#--------------------------------------------------
+set(BONSAI_CATALYST_PYTHON_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/live.py" CACHE STRING "Script to run when coprocessing using Python")
+add_definitions(-DBONSAI_CATALYST_PYTHON_SCRIPT="${BONSAI_CATALYST_PYTHON_SCRIPT}")
+
+#--------------------------------------------------
+# Option to set where any generated data files might go 
+#--------------------------------------------------
+set(BONSAI_CATALYST_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}" CACHE STRING "DIR to put any generated files at runtime")
+add_definitions(-DBONSAI_CATALYST_OUTPUT_DIR="${BONSAI_CATALYST_OUTPUT_DIR}")
+
+#--------------------------------------------------
 # source files
 #--------------------------------------------------
 set(SRC_FILES 
