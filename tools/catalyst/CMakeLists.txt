@@ -128,3 +128,5 @@ target_link_libraries(bonsai_catalyst_mpi
   ${MPI_C_LIBRARIES}
 )
 
+set(BUILD_SHARED_LIBS ON)
+include(pvserver_cmake.txt)
