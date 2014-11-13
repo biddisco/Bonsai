@@ -178,8 +178,8 @@ static bonsaistd::tuple<double,DataVec> lReadBonsai(
   if (reduceS > 0)
   {
     if (!in.read(IDListS, true, reduceS)) return bonsaistd::make_tuple(-1.0,rdata);
-    if (rank  == 0)
-      fprintf(stderr, " Reading star data \n");
+//    if (rank  == 0)
+//      fprintf(stderr, " Reading star data \n");
     assert(in.read(posS,    true, reduceS));
     assert(in.read(velS,    true, reduceS));
     bool renderDensity = true;
@@ -204,8 +204,8 @@ static bonsaistd::tuple<double,DataVec> lReadBonsai(
   BonsaiIO::DataType<float2> rhohDM("DM:RHOH:float[2]");
   if (reduceDM > 0)
   {
-    if (rank  == 0)
-      fprintf(stderr, " Reading DM data \n");
+//    if (rank  == 0)
+//      fprintf(stderr, " Reading DM data \n");
     if(!in.read(IDListDM, true, reduceDM)) return bonsaistd::make_tuple(-1.0,rdata);
     assert(in.read(posDM,    true, reduceDM));
     assert(in.read(velDM,    true, reduceDM));
@@ -236,8 +236,8 @@ static bonsaistd::tuple<double,DataVec> lReadBonsai(
   MPI_Allreduce(&nDMloc, &nDMglb, 1, MPI_LONG, MPI_SUM, comm);
   if (rank == 0)
   {
-    fprintf(stderr, "nStars = %lld\n", nSglb);
-    fprintf(stderr, "nDM    = %lld\n", nDMglb);
+//    fprintf(stderr, "nStars = %lld\n", nSglb);
+//    fprintf(stderr, "nDM    = %lld\n", nDMglb);
   }
 
 
@@ -268,8 +268,8 @@ static bonsaistd::tuple<double,DataVec> lReadBonsai(
 
   const double bw = in.computeBandwidth()/1e6;
   const double dtRead = t1-t0;
-  if (rank == 0)
-    fprintf(stderr, " :: dtRead= %g  sec readBW= %g MB/s \n", dtRead, bw);
+//  if (rank == 0)
+//    fprintf(stderr, " :: dtRead= %g  sec readBW= %g MB/s \n", dtRead, bw);
   const double t = in.getTime();
   in.close();
   return bonsaistd::make_tuple(t,rdata);
@@ -381,7 +381,7 @@ extern "C" int bonsai_main(int argc, char * argv[], MPI_Comm commWorld)
     fprintf(stderr , " delay= %d msec \n", delay);
   }
 
-  // catch ctrl-c so we can close cleany and not hold onto memory
+  // catch ctrl-c so we can close cleanly and not hold onto memory
   struct sigaction act;
   act.sa_handler = intHandler;
   sigaction(SIGINT, &act, NULL);
@@ -396,9 +396,9 @@ extern "C" int bonsai_main(int argc, char * argv[], MPI_Comm commWorld)
         fprintf(stderr, "loop= %3d: filename= %s \n", i, file.c_str());
       const auto &data = lReadBonsai(rank, nranks, comm,
           file, reduceDM, reduceS);
-      if (rank == 0)
-        fprintf(stderr, "rank= %d : time= %g np= %zu \n",
-            rank, bonsaistd::get<0>(data), bonsaistd::get<1>(data).size());
+//      if (rank == 0)
+//        fprintf(stderr, "rank= %d : time= %g np= %zu \n",
+//            rank, bonsaistd::get<0>(data), bonsaistd::get<1>(data).size());
       lSendSharedData(quickSync, bonsaistd::get<0>(data), bonsaistd::get<1>(data), file.c_str(), rank, nranks, comm);
       if (delay > 0)
         usleep(1000*delay);
