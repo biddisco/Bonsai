@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 static bool RealMain(int argc, char* argv[],
-  vtkProcessModule::ProcessTypes type, int mpi_comm)
+  vtkProcessModule::ProcessTypes type, int *mpi_comm)
 {
   // Marking this static avoids the false leak messages from vtkDebugLeaks when
   // using mpich. It appears that the root process which spawns all the

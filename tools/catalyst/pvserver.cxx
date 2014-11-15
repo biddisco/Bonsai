@@ -24,5 +24,5 @@ extern "C" int bonsai_main(int argc, char* argv[], int commWorld)
   paraview_static_plugins_init();
 #endif
   // Init current process type
-  return RealMain(argc, argv, vtkProcessModule::PROCESS_SERVER, static_cast<int>(commWorld))? 0 : 1;
+  return RealMain(argc, argv, vtkProcessModule::PROCESS_SERVER, &commWorld) ? 0 : 1;
 }
