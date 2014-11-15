@@ -123,6 +123,7 @@ class SharedMemoryServer : public SharedMemoryBase<T>
   public:
     SharedMemoryServer(const std::string &descriptor, const size_t capacity) : p(descriptor)
     {
+      shm_unlink(p::descriptor.c_str());
       p::shmfd = shm_open(p::descriptor.c_str(), O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
       if (p::shmfd < 0)
         throw Exception("SharedMemoryServer::Ctor - shm_open failed with error " + bonsaistd::to_string(p::shmfd) + "\n");
