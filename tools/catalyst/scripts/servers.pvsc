@@ -1,0 +1,39 @@
+<Servers>
+  <Server name="local-bonsai-demo" resource="csrc://localhost">
+    <CommandStartup>
+      <Options>
+        <Option name="MACHINE" label="Remote Machine" save="true">
+          <String default="localhost"/>
+        </Option>
+        <Option name="SSH_USER" label="SSH Username" save="true">
+          <String default="biddisco"/>
+        </Option>
+        <Option name="SSH_EXE" label="SSH Executable" save="true">
+          <File default="ssh"/>
+        </Option>
+        <Option name="REMOTESCRIPT" label="The remote script that generates the job submission">
+          <String default="/Users/biddisco/src/bonsai/tools/catalyst/scripts/submit-local-bonsai.sh"/>
+        </Option>
+        <Option name="ROOTPATH" label="Root path of binaries">
+          <String default="/Users/biddisco/build/bcatalyst"/>
+        </Option>
+        <Option name="PV_SERVER_PORT" label="PV server port">
+          <Range type="int" min="1" max="65535" step="1" default="11111"/>
+        </Option>
+        <Option name="OPENMP" label="Use OpenMP">
+          <Boolean true="1" false="0" default="false"/>
+        </Option>
+      </Options>
+      <Command exec="$SSH_EXE$" delay="5">
+        <Arguments>
+          <Argument value="$MACHINE$"/>
+          <Argument value="-l"/>
+          <Argument value="$SSH_USER$"/>
+          <Argument value="$REMOTESCRIPT$"/>
+          <Argument value="$PV_SERVER_PORT$"/>
+          <Argument value="$OPENMP$"/>
+          <Argument value="$ROOTPATH$"/>
+        </Arguments>
+      </Command>
+    </CommandStartup>
+  </Server>
